@@ -262,6 +262,9 @@ const DB = [
   {k:["two donuts","2 donuts"],c:640,p:8,cb:76,f:36,s:"2 glazed donuts"},
   {k:["pie","slice of pie"],c:420,p:4,cb:52,f:22,s:"1 slice of pie"},
   {k:["milkshake"],c:580,p:14,cb:72,f:26,s:"Large milkshake"},
+  {k:["a cannoli","cannoli","one cannoli"],c:220,p:4,cb:26,f:12,s:"1 standard cannoli"},
+  {k:["two cannoli","2 cannoli","two cannolis","2 cannolis","couple cannoli"],c:440,p:8,cb:52,f:24,s:"2 standard cannoli"},
+  {k:["three cannoli","3 cannoli","three cannolis"],c:660,p:12,cb:78,f:36,s:"3 standard cannoli"},
 
   // ── Drinks ──
   {k:["couple beers","a couple beers","two beers","2 beers"],c:320,p:2,cb:26,f:0,s:"2 × 12oz beers"},
@@ -391,7 +394,16 @@ function NutritionTracker() {
     if (!input.trim()) return;
     setLoading(true); setResp(null); setPending(null);
 
-    // Always try AI first for accurate food recognition
+    // Check local DB first for consistent, instant results
+    const match = fuzzyMatch(input.trim());
+    if (match) {
+      const macros = { calories: match.calories, protein: match.protein, carbs: match.carbs, fat: match.fat };
+      const v = getVerdict(macros, remaining, mealsLeft);
+      const r = { verdict: v.verdict, food_name: match.name.charAt(0).toUpperCase() + match.name.slice(1), estimated_macros: macros, serving_size: match.serving, reasoning: v.reasoning, suggestion: v.suggestion };
+      setResp(r); setPending(r); setLoading(false); return;
+    }
+
+    // Not in DB — use AI for everything else
     const mw = MEAL_WINDOWS[mwi];
     const prompt = `You are a sports nutrition AI for a 6'1" 264lb former D1 defensive tackle cutting to ~235 over 12 weeks while preserving muscle. He's in ${PHASE_INFO[phase].label}.
 
@@ -401,6 +413,8 @@ TODAY SO FAR: ${logged.length === 0 ? "Nothing logged" : logged.map(f => f.name 
 REMAINING: ${remaining.calories} cal / ${remaining.protein}g P / ${remaining.carbs}g C / ${remaining.fat}g F
 
 FOOD: "${input.trim()}"
+
+IMPORTANT: Pay close attention to quantities. "a cannoli" = 1 cannoli. "two cannoli" = 2. "three eggs" = 3. Always respect the exact quantity stated. If no quantity given, assume a single standard serving for a large athletic male.
 
 Estimate macros for literally ANY food input — restaurant items, homemade, brand names, vague descriptions, desserts, snacks, drinks, anything. Use real published nutrition data for branded items. Estimate generously for a large 264lb athletic male. Never refuse. Never ask for clarification.
 
