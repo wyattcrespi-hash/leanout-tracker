@@ -394,16 +394,7 @@ function NutritionTracker() {
     if (!input.trim()) return;
     setLoading(true); setResp(null); setPending(null);
 
-    // Check local DB first for consistent, instant results
-    const match = fuzzyMatch(input.trim());
-    if (match) {
-      const macros = { calories: match.calories, protein: match.protein, carbs: match.carbs, fat: match.fat };
-      const v = getVerdict(macros, remaining, mealsLeft);
-      const r = { verdict: v.verdict, food_name: match.name.charAt(0).toUpperCase() + match.name.slice(1), estimated_macros: macros, serving_size: match.serving, reasoning: v.reasoning, suggestion: v.suggestion };
-      setResp(r); setPending(r); setLoading(false); return;
-    }
-
-    // Not in DB — use AI for everything else
+    // Send everything to Claude AI
     const mw = MEAL_WINDOWS[mwi];
     const prompt = `You are a sports nutrition AI for a 6'1" 264lb former D1 defensive tackle cutting to ~235 over 12 weeks while preserving muscle. He's in ${PHASE_INFO[phase].label}.
 
@@ -414,12 +405,15 @@ REMAINING: ${remaining.calories} cal / ${remaining.protein}g P / ${remaining.car
 
 FOOD: "${input.trim()}"
 
-IMPORTANT: Pay close attention to quantities. "a cannoli" = 1 cannoli. "two cannoli" = 2. "three eggs" = 3. Always respect the exact quantity stated. If no quantity given, assume a single standard serving for a large athletic male.
-
-Estimate macros for literally ANY food input — restaurant items, homemade, brand names, vague descriptions, desserts, snacks, drinks, anything. Use real published nutrition data for branded items. Estimate generously for a large 264lb athletic male. Never refuse. Never ask for clarification.
+CRITICAL RULES:
+1. Pay close attention to quantities. "a cannoli" = 1. "two cannoli" = 2. "three eggs" = 3. Always respect the exact quantity stated.
+2. If no quantity is given, assume ONE standard serving.
+3. Use real published nutrition data for branded/restaurant items (Chick-fil-A, Chipotle, Starbucks, etc).
+4. For homemade/generic foods, estimate for a large 264lb athletic male — portions are bigger than average.
+5. Never refuse. Never ask for clarification. Just estimate.
 
 Respond ONLY with valid JSON, no markdown, no backticks:
-{"verdict":"YES or NO or MODIFY","food_name":"cleaned up name","estimated_macros":{"calories":0,"protein":0,"carbs":0,"fat":0},"serving_size":"what you assumed","reasoning":"1-2 sentences, direct like a coach","suggestion":"concrete alternative if NO/MODIFY, else empty string"}`;
+{"verdict":"YES or NO or MODIFY","food_name":"cleaned up name with quantity","estimated_macros":{"calories":0,"protein":0,"carbs":0,"fat":0},"serving_size":"exactly what you assumed including quantity and size","reasoning":"1-2 sentences, direct like a coach, reference remaining macros","suggestion":"concrete alternative if NO/MODIFY, else empty string"}`;
 
     try {
       const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 500, messages: [{ role: "user", content: prompt }] }) });
@@ -431,19 +425,16 @@ Respond ONLY with valid JSON, no markdown, no backticks:
       const p = JSON.parse(jsonMatch ? jsonMatch[0] : txt);
       setResp(p); setPending(p);
     } catch {
-      // API failed — fall back to local DB
+      // API failed — fall back to local DB only when offline
       const match = fuzzyMatch(input.trim());
       if (match) {
         const macros = { calories: match.calories, protein: match.protein, carbs: match.carbs, fat: match.fat };
         const v = getVerdict(macros, remaining, mealsLeft);
-        const r = { verdict: v.verdict, food_name: match.name.charAt(0).toUpperCase() + match.name.slice(1), estimated_macros: macros, serving_size: match.serving, reasoning: v.reasoning, suggestion: v.suggestion };
+        const r = { verdict: v.verdict, food_name: match.name.charAt(0).toUpperCase() + match.name.slice(1), estimated_macros: macros, serving_size: match.serving + " (offline estimate)", reasoning: v.reasoning, suggestion: v.suggestion };
         setResp(r); setPending(r);
       } else {
-        // Nothing matched — rough estimate
-        const fallback = { calories: 500, protein: 20, carbs: 45, fat: 22 };
-        const v = getVerdict(fallback, remaining, mealsLeft);
-        setResp({ verdict: v.verdict, food_name: input.trim(), estimated_macros: fallback, serving_size: "Rough estimate — couldn't look this up. Adjust before logging.", reasoning: "Estimated ~500 cal. " + v.reasoning, suggestion: v.suggestion });
-        setPending({ verdict: v.verdict, food_name: input.trim(), estimated_macros: fallback, serving_size: "Rough estimate", reasoning: v.reasoning, suggestion: v.suggestion });
+        setResp({ verdict: "ERROR", reasoning: "No internet connection and this food isn't in the offline database. Connect to wifi and try again." });
+      }        setPending({ verdict: v.verdict, food_name: input.trim(), estimated_macros: fallback, serving_size: "Rough estimate", reasoning: v.reasoning, suggestion: v.suggestion });
       }
     }
     setLoading(false);
