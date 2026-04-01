@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LeanOut">
+<title>Lean Out Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0a}input::placeholder{color:#555}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const PHASE_INFO = {
+  weeks1_6: { calories: 2300, label: "Weeks 1–6 (Aggressive)" },
+  weeks7_12: { calories: 2600, label: "Weeks 7–12 (Moderate)" },
+};
+const BASE_TARGETS = { protein: 215, carbs: 190, fat: 75 };
+const MEAL_WINDOWS = [
+  { name: "Meal 1", time: "7:00 AM", icon: "☀️", desc: "Post-wake / Pre-work" },
+  { name: "Meal 2", time: "11:30 AM", icon: "🔥", desc: "Midday fuel" },
+  { name: "Meal 3", time: "3:00 PM", icon: "⚡", desc: "Pre-training" },
+  { name: "Meal 4", time: "6:30 PM", icon: "🏋️", desc: "Post-training" },
+  { name: "Meal 5", time: "9:00 PM", icon: "🌙", desc: "Night feed" },
+];
+
+// c=cal p=protein cb=carbs f=fat
+const DB = [
+  // ── Sandwiches & Subs ──
+  {k:["chicken parm sandwich","chicken parm sub","chicken parmesan sandwich","chicken parmesan sub"],c:820,p:48,cb:65,f:38,s:"Large chicken parm sub with marinara & mozzarella"},
+  {k:["chicken parm","chicken parmesan"],c:720,p:52,cb:42,f:32,s:"Chicken parm plate with side pasta"},
+  {k:["meatball sub"],c:780,p:38,cb:72,f:36,s:"12\" meatball sub with provolone"},
+  {k:["turkey sandwich","turkey sub"],c:480,p:35,cb:42,f:18,s:"Turkey sandwich with lettuce, tomato, mayo"},
+  {k:["blt"],c:520,p:22,cb:38,f:32,s:"BLT with mayo on toast"},
+  {k:["grilled chicken sandwich"],c:520,p:42,cb:40,f:18,s:"Grilled chicken breast sandwich"},
+  {k:["philly cheesesteak","cheesesteak"],c:900,p:50,cb:60,f:48,s:"Full Philly cheesesteak"},
+  {k:["club sandwich"],c:680,p:40,cb:48,f:34,s:"Triple-decker club sandwich"},
+  {k:["cuban sandwich","cubano"],c:750,p:45,cb:55,f:38,s:"Pressed Cuban sandwich"},
+  {k:["pulled pork sandwich","pulled pork"],c:680,p:38,cb:52,f:32,s:"Pulled pork sandwich with slaw"},
+  {k:["italian sub","italian hoagie"],c:780,p:36,cb:62,f:42,s:"Italian sub with salami, ham, capicola, provolone"},
+
+  // ── Burgers ──
+  {k:["burger","hamburger","cheeseburger"],c:780,p:44,cb:42,f:46,s:"1/3 lb cheeseburger with toppings"},
+  {k:["double cheeseburger"],c:980,p:58,cb:44,f:58,s:"Double cheeseburger"},
+  {k:["bacon cheeseburger"],c:880,p:48,cb:42,f:54,s:"Bacon cheeseburger"},
+  {k:["burger and fries"],c:1050,p:42,cb:90,f:55,s:"Cheeseburger + regular fries"},
+  {k:["hot dog"],c:380,p:14,cb:32,f:22,s:"Beef hot dog with bun & condiments"},
+  {k:["two hot dogs"],c:760,p:28,cb:64,f:44,s:"2 beef hot dogs"},
+
+  // ── Fast Food: Chick-fil-A ──
+  {k:["chick-fil-a sandwich","chick fil a sandwich","cfa sandwich"],c:440,p:28,cb:40,f:19,s:"Original Chick-fil-A sandwich"},
+  {k:["chick-fil-a spicy deluxe","cfa spicy deluxe","chick fil a spicy deluxe"],c:550,p:33,cb:48,f:24,s:"Spicy Deluxe sandwich"},
+  {k:["chick-fil-a spicy deluxe meal","cfa spicy deluxe meal"],c:1050,p:40,cb:128,f:42,s:"Spicy Deluxe + med waffle fries + med lemonade"},
+  {k:["chick-fil-a meal","cfa meal","chick fil a meal"],c:940,p:35,cb:110,f:38,s:"Original sandwich + waffle fries + drink"},
+  {k:["chick-fil-a nuggets","cfa nuggets"],c:400,p:42,cb:18,f:17,s:"12-count nuggets"},
+  {k:["chick-fil-a grilled nuggets"],c:200,p:38,cb:2,f:4,s:"12-count grilled nuggets"},
+  {k:["chick-fil-a cool wrap"],c:350,p:43,cb:30,f:14,s:"Grilled chicken cool wrap"},
+
+  // ── Fast Food: Chipotle ──
+  {k:["chipotle bowl","chipotle burrito bowl"],c:880,p:52,cb:82,f:32,s:"Bowl: rice, chicken, beans, salsa, cheese, sour cream, lettuce"},
+  {k:["chipotle burrito"],c:1050,p:55,cb:110,f:38,s:"Burrito: rice, chicken, beans, salsa, cheese, sour cream"},
+  {k:["chipotle salad"],c:580,p:48,cb:22,f:32,s:"Salad with chicken, salsa, cheese, vinaigrette"},
+  {k:["chipotle steak bowl"],c:920,p:48,cb:82,f:38,s:"Bowl with steak instead of chicken"},
+  {k:["chipotle quesadilla"],c:980,p:52,cb:72,f:48,s:"Chipotle chicken quesadilla"},
+
+  // ── Fast Food: Other ──
+  {k:["five guys burger","five guys"],c:980,p:50,cb:40,f:68,s:"Regular Five Guys cheeseburger"},
+  {k:["five guys little burger","five guys little bacon cheeseburger"],c:780,p:42,cb:38,f:50,s:"Little bacon cheeseburger"},
+  {k:["cookout tray"],c:1250,p:48,cb:120,f:62,s:"Big Double tray + fries + hush puppy + drink"},
+  {k:["cookout"],c:1250,p:48,cb:120,f:62,s:"Cookout tray with burger, 2 sides, drink"},
+  {k:["wawa hoagie","wawa shorti","wawa sub"],c:720,p:38,cb:62,f:35,s:"Wawa Shorti Italian hoagie"},
+  {k:["subway footlong","footlong sub"],c:680,p:38,cb:72,f:24,s:"Footlong turkey sub"},
+  {k:["subway 6 inch","six inch sub"],c:380,p:22,cb:42,f:12,s:"6-inch turkey sub"},
+  {k:["mcdonalds big mac","big mac"],c:590,p:25,cb:46,f:34,s:"Big Mac"},
+  {k:["mcdonalds quarter pounder","quarter pounder"],c:630,p:32,cb:44,f:36,s:"Quarter Pounder with Cheese"},
+  {k:["mcnuggets","chicken mcnuggets"],c:470,p:22,cb:30,f:28,s:"10-piece McNuggets"},
+  {k:["wendy's baconator","baconator"],c:960,p:58,cb:38,f:65,s:"Baconator"},
+  {k:["taco bell crunchwrap","crunchwrap"],c:530,p:16,cb:71,f:21,s:"Crunchwrap Supreme"},
+  {k:["popeyes chicken sandwich","popeyes sandwich"],c:700,p:28,cb:50,f:42,s:"Classic Chicken Sandwich"},
+  {k:["raising cane's box","cane's box combo","raising canes"],c:1100,p:52,cb:92,f:56,s:"Box Combo: 4 fingers, fries, toast, slaw, sauce"},
+  {k:["zaxby's","zaxbys plate"],c:1050,p:48,cb:88,f:52,s:"Chicken Fingerz Plate"},
+  {k:["bojangles"],c:780,p:38,cb:68,f:38,s:"Cajun Filet combo with fries and biscuit"},
+  {k:["whataburger"],c:820,p:38,cb:58,f:48,s:"Whataburger with cheese + fries"},
+  {k:["in n out double double","in n out"],c:670,p:37,cb:40,f:41,s:"Double-Double burger"},
+  {k:["shake shack burger","shake shack"],c:740,p:36,cb:42,f:46,s:"ShackBurger with fries"},
+  {k:["panda express plate"],c:920,p:42,cb:98,f:36,s:"2-entree plate with fried rice"},
+  {k:["panda express bowl"],c:680,p:32,cb:72,f:28,s:"1-entree bowl with fried rice"},
+  {k:["domino's pizza","dominos"],c:640,p:26,cb:70,f:28,s:"2 large slices of Domino's pepperoni"},
+  {k:["papa john's","papa johns"],c:640,p:24,cb:68,f:30,s:"2 large slices pepperoni"},
+
+  // ── Pizza & Italian ──
+  {k:["two slices of pizza","couple slices of pizza","2 slices pizza","two slices pizza"],c:640,p:28,cb:68,f:28,s:"2 large slices pepperoni"},
+  {k:["slice of pizza","a slice of pizza","one slice pizza"],c:320,p:14,cb:34,f:14,s:"1 large slice pepperoni"},
+  {k:["pizza"],c:640,p:28,cb:68,f:28,s:"2 large slices"},
+  {k:["lasagna"],c:680,p:32,cb:48,f:36,s:"Large slice of meat lasagna"},
+  {k:["pasta","spaghetti","penne"],c:680,p:22,cb:88,f:24,s:"Large plate of pasta with sauce"},
+  {k:["pasta with meat sauce","spaghetti bolognese","bolognese"],c:780,p:38,cb:88,f:28,s:"Large plate spaghetti bolognese"},
+  {k:["mac and cheese","mac n cheese","mac & cheese"],c:720,p:24,cb:68,f:38,s:"Large bowl of mac and cheese"},
+  {k:["alfredo","fettuccine alfredo"],c:780,p:28,cb:72,f:42,s:"Large plate of chicken alfredo"},
+  {k:["garlic bread"],c:280,p:6,cb:34,f:14,s:"3 slices of garlic bread"},
+
+  // ── Wings ──
+  {k:["wings","chicken wings","buffalo wings"],c:880,p:68,cb:12,f:62,s:"12 bone-in wings with sauce"},
+  {k:["wings from bdubs","bdubs wings","buffalo wild wings"],c:960,p:72,cb:18,f:66,s:"12 traditional wings from BWW"},
+  {k:["boneless wings"],c:780,p:52,cb:48,f:38,s:"12 boneless wings with sauce"},
+  {k:["wingstop"],c:900,p:64,cb:24,f:62,s:"12 classic wings from Wingstop"},
+
+  // ── Coffee & Starbucks ──
+  {k:["grande caramel macchiato","starbucks caramel macchiato","caramel macchiato"],c:250,p:10,cb:34,f:7,s:"Grande Caramel Macchiato, 2% milk"},
+  {k:["venti caramel macchiato"],c:350,p:13,cb:45,f:10,s:"Venti Caramel Macchiato"},
+  {k:["grande latte","starbucks latte","latte"],c:190,p:13,cb:19,f:7,s:"Grande Caffè Latte, 2% milk"},
+  {k:["iced latte"],c:170,p:11,cb:17,f:6,s:"Grande Iced Latte, 2% milk"},
+  {k:["venti pink drink","pink drink"],c:200,p:1,cb:45,f:3,s:"Starbucks Venti Pink Drink"},
+  {k:["cold brew"],c:5,p:0,cb:0,f:0,s:"Grande Cold Brew, black"},
+  {k:["frappuccino","frap"],c:380,p:5,cb:58,f:14,s:"Grande Caramel Frappuccino"},
+  {k:["chai latte","chai tea latte"],c:240,p:8,cb:42,f:4,s:"Grande Chai Latte, 2% milk"},
+  {k:["matcha latte"],c:240,p:12,cb:34,f:5,s:"Grande Matcha Latte"},
+  {k:["hot chocolate"],c:320,p:12,cb:44,f:10,s:"Grande Hot Chocolate with whip"},
+  {k:["black coffee","coffee"],c:5,p:0,cb:0,f:0,s:"16oz black coffee"},
+  {k:["iced coffee","iced coffee with cream"],c:80,p:1,cb:8,f:4,s:"Large iced coffee with cream"},
+  {k:["dunkin iced coffee","dunkin"],c:120,p:2,cb:18,f:5,s:"Large Dunkin Iced Coffee with cream & sugar"},
+  {k:["mocha","cafe mocha"],c:360,p:12,cb:42,f:14,s:"Grande Café Mocha with whip"},
+  {k:["vanilla latte"],c:250,p:12,cb:36,f:6,s:"Grande Vanilla Latte"},
+  {k:["espresso"],c:10,p:1,cb:1,f:0,s:"Double espresso"},
+  {k:["americano"],c:15,p:1,cb:2,f:0,s:"Grande Americano"},
+
+  // ── Protein / Supplements ──
+  {k:["protein shake","whey shake"],c:280,p:40,cb:16,f:6,s:"2 scoops whey with milk"},
+  {k:["fairlife shake","fairlife","core power"],c:150,p:30,cb:3,f:3,s:"Fairlife Core Power Elite bottle"},
+  {k:["two scoops whey with milk","2 scoops whey"],c:320,p:52,cb:18,f:8,s:"2 scoops whey isolate + 12oz milk"},
+  {k:["protein bar"],c:240,p:20,cb:26,f:8,s:"Standard protein bar"},
+  {k:["quest bar"],c:200,p:21,cb:22,f:7,s:"1 Quest bar"},
+  {k:["kirkland protein bar"],c:190,p:21,cb:23,f:7,s:"1 Kirkland bar"},
+  {k:["premier protein","premier protein shake"],c:160,p:30,cb:5,f:3,s:"Premier Protein shake"},
+  {k:["muscle milk"],c:280,p:25,cb:16,f:14,s:"Muscle Milk bottle"},
+  {k:["protein smoothie","smoothie with protein"],c:380,p:35,cb:42,f:8,s:"Large smoothie with whey, banana, berries"},
+  {k:["creatine"],c:0,p:0,cb:0,f:0,s:"5g creatine monohydrate (zero calories)"},
+
+  // ── Breakfast ──
+  {k:["eggs and bacon","bacon and eggs"],c:520,p:36,cb:2,f:40,s:"3 eggs scrambled + 4 strips bacon"},
+  {k:["scrambled eggs","eggs"],c:280,p:20,cb:2,f:22,s:"3 large eggs scrambled"},
+  {k:["eggs bacon and toast","eggs bacon toast"],c:650,p:38,cb:32,f:42,s:"3 eggs, 4 bacon, 2 toast with butter"},
+  {k:["oatmeal"],c:350,p:12,cb:58,f:8,s:"1.5 cups oatmeal with banana & honey"},
+  {k:["overnight oats"],c:420,p:18,cb:58,f:14,s:"Overnight oats with protein & nut butter"},
+  {k:["avocado toast","avo toast"],c:380,p:10,cb:38,f:22,s:"2 slices toast with avocado"},
+  {k:["pancakes"],c:680,p:14,cb:90,f:28,s:"3 large pancakes with butter & syrup"},
+  {k:["waffles","waffle"],c:380,p:8,cb:48,f:18,s:"2 waffles with butter & syrup"},
+  {k:["breakfast burrito"],c:650,p:32,cb:52,f:35,s:"Eggs, sausage, cheese, potatoes in tortilla"},
+  {k:["bagel with cream cheese","bagel and cream cheese"],c:440,p:12,cb:56,f:18,s:"Large bagel with cream cheese"},
+  {k:["bagel"],c:320,p:10,cb:56,f:4,s:"Large plain bagel"},
+  {k:["cereal"],c:320,p:6,cb:52,f:8,s:"Large bowl of cereal with whole milk"},
+  {k:["french toast"],c:580,p:16,cb:62,f:28,s:"3 slices French toast with syrup"},
+  {k:["egg sandwich","egg and cheese"],c:420,p:22,cb:34,f:22,s:"Egg & cheese on roll/English muffin"},
+  {k:["sausage egg and cheese","sausage egg cheese biscuit"],c:560,p:26,cb:38,f:34,s:"Sausage egg & cheese biscuit"},
+
+  // ── Chicken / Meat Meals ──
+  {k:["grilled chicken and rice","grilled chicken + rice","chicken and rice","chicken rice"],c:550,p:48,cb:55,f:12,s:"8oz grilled chicken + 1.5 cups rice"},
+  {k:["chicken stir fry","stir fry"],c:620,p:42,cb:58,f:22,s:"Chicken stir fry with rice"},
+  {k:["steak and potatoes","steak with potatoes"],c:780,p:58,cb:48,f:38,s:"10oz sirloin with baked potato"},
+  {k:["steak","sirloin","ribeye","ny strip"],c:580,p:54,cb:0,f:38,s:"10oz steak"},
+  {k:["leftover steak","leftover steak and potatoes"],c:700,p:52,cb:45,f:34,s:"~8oz leftover steak with potato"},
+  {k:["salmon","grilled salmon"],c:420,p:46,cb:0,f:24,s:"8oz salmon fillet"},
+  {k:["salmon and veggies","salmon and vegetables"],c:520,p:45,cb:18,f:30,s:"8oz salmon with roasted veggies"},
+  {k:["chicken breast","grilled chicken"],c:320,p:52,cb:0,f:8,s:"8oz grilled chicken breast"},
+  {k:["rotisserie chicken"],c:480,p:58,cb:0,f:26,s:"Half rotisserie chicken"},
+  {k:["fried chicken"],c:680,p:48,cb:28,f:42,s:"3 pieces fried chicken"},
+  {k:["chicken tenders","chicken fingers","chicken strips"],c:580,p:38,cb:36,f:28,s:"5 chicken tenders"},
+  {k:["pork chop","pork chops"],c:480,p:48,cb:0,f:30,s:"2 bone-in pork chops"},
+  {k:["meatloaf"],c:620,p:38,cb:32,f:36,s:"2 thick slices of meatloaf"},
+  {k:["pot roast"],c:680,p:52,cb:28,f:38,s:"Large plate of pot roast with vegetables"},
+
+  // ── Asian ──
+  {k:["chicken tikka masala"],c:720,p:38,cb:62,f:32,s:"Tikka masala with rice"},
+  {k:["chicken tikka masala with naan"],c:920,p:42,cb:90,f:36,s:"Tikka masala + rice + naan"},
+  {k:["pho"],c:620,p:38,cb:68,f:18,s:"Large pho with beef"},
+  {k:["ramen"],c:720,p:32,cb:78,f:28,s:"Large tonkotsu ramen"},
+  {k:["bibimbap"],c:680,p:32,cb:78,f:24,s:"Large bibimbap with beef & egg"},
+  {k:["pad thai"],c:680,p:28,cb:82,f:26,s:"Large chicken pad thai"},
+  {k:["fried rice"],c:650,p:22,cb:78,f:28,s:"Large plate of fried rice"},
+  {k:["lo mein"],c:620,p:20,cb:72,f:28,s:"Large chicken lo mein"},
+  {k:["curry"],c:700,p:32,cb:62,f:34,s:"Large curry with rice"},
+  {k:["general tso's chicken","general tso"],c:820,p:32,cb:88,f:38,s:"General Tso's chicken with rice"},
+  {k:["orange chicken"],c:780,p:28,cb:82,f:36,s:"Orange chicken with rice"},
+  {k:["teriyaki chicken"],c:620,p:42,cb:62,f:18,s:"Teriyaki chicken bowl with rice"},
+  {k:["sushi","sushi roll"],c:520,p:22,cb:68,f:14,s:"2 standard rolls"},
+  {k:["poke bowl","poke"],c:650,p:38,cb:72,f:20,s:"Regular poke bowl with rice"},
+  {k:["egg roll","egg rolls"],c:280,p:8,cb:28,f:14,s:"2 egg rolls"},
+  {k:["dumplings"],c:380,p:16,cb:42,f:16,s:"8 pork dumplings"},
+
+  // ── Mexican ──
+  {k:["tacos"],c:640,p:35,cb:52,f:30,s:"3 beef tacos with toppings"},
+  {k:["fish tacos"],c:580,p:32,cb:48,f:28,s:"3 fish tacos with slaw"},
+  {k:["burrito"],c:900,p:42,cb:95,f:32,s:"Large burrito with all toppings"},
+  {k:["quesadilla"],c:680,p:35,cb:48,f:38,s:"Large chicken quesadilla"},
+  {k:["nachos"],c:850,p:28,cb:72,f:50,s:"Full plate loaded nachos"},
+  {k:["enchiladas"],c:720,p:32,cb:52,f:38,s:"3 chicken enchiladas with sauce & cheese"},
+  {k:["pupusas"],c:600,p:24,cb:58,f:30,s:"3 pupusas with curtido"},
+  {k:["chips and salsa","chips & salsa"],c:320,p:4,cb:42,f:16,s:"Large basket of chips with salsa"},
+  {k:["chips and guac","chips and guacamole"],c:480,p:6,cb:42,f:32,s:"Chips with guacamole"},
+
+  // ── Sides ──
+  {k:["french fries","fries"],c:420,p:5,cb:52,f:22,s:"Large order of fries"},
+  {k:["sweet potato fries"],c:380,p:4,cb:52,f:18,s:"Large sweet potato fries"},
+  {k:["onion rings"],c:480,p:6,cb:58,f:26,s:"Large onion rings"},
+  {k:["mashed potatoes"],c:320,p:6,cb:42,f:14,s:"Large serving with butter"},
+  {k:["baked potato"],c:380,p:8,cb:58,f:14,s:"Baked potato with butter & sour cream"},
+  {k:["rice"],c:280,p:5,cb:62,f:1,s:"1.5 cups cooked rice"},
+  {k:["coleslaw","slaw"],c:180,p:2,cb:16,f:12,s:"Side of coleslaw"},
+  {k:["corn on the cob","corn"],c:180,p:5,cb:32,f:6,s:"2 ears with butter"},
+  {k:["side salad","small salad"],c:150,p:4,cb:12,f:10,s:"Side salad with dressing"},
+  {k:["a salad","salad"],c:420,p:28,cb:22,f:26,s:"Large salad with protein & dressing"},
+  {k:["caesar salad"],c:480,p:12,cb:18,f:38,s:"Caesar salad with croutons & parmesan"},
+  {k:["chicken caesar salad","grilled chicken caesar"],c:580,p:42,cb:22,f:36,s:"Grilled chicken caesar salad"},
+
+  // ── Soups ──
+  {k:["soup"],c:280,p:14,cb:28,f:12,s:"Large bowl of soup"},
+  {k:["chili"],c:420,p:28,cb:38,f:18,s:"Large bowl of chili"},
+  {k:["chicken noodle soup"],c:240,p:16,cb:28,f:6,s:"Large bowl of chicken noodle soup"},
+  {k:["broccoli cheddar soup"],c:360,p:12,cb:22,f:24,s:"Large bowl of broccoli cheddar"},
+  {k:["grilled cheese"],c:480,p:18,cb:36,f:30,s:"Grilled cheese sandwich"},
+  {k:["grilled cheese and tomato soup"],c:680,p:24,cb:62,f:36,s:"Grilled cheese + bowl of tomato soup"},
+
+  // ── Snacks ──
+  {k:["handful of almonds","almonds"],c:210,p:8,cb:7,f:18,s:"~1.5oz almonds"},
+  {k:["trail mix"],c:380,p:10,cb:38,f:22,s:"~2/3 cup trail mix"},
+  {k:["greek yogurt"],c:180,p:18,cb:12,f:6,s:"1 cup Greek yogurt"},
+  {k:["yogurt"],c:180,p:10,cb:24,f:6,s:"1 cup yogurt"},
+  {k:["banana"],c:110,p:1,cb:28,f:0,s:"1 medium banana"},
+  {k:["apple"],c:95,p:0,cb:25,f:0,s:"1 medium apple"},
+  {k:["peanut butter toast","peanut butter on toast","pb toast"],c:350,p:14,cb:32,f:20,s:"2 slices toast + 2 tbsp PB"},
+  {k:["pb&j","pbj","peanut butter and jelly"],c:420,p:14,cb:52,f:18,s:"PB&J sandwich"},
+  {k:["beef jerky","jerky"],c:230,p:36,cb:10,f:4,s:"3oz bag of jerky"},
+  {k:["cheese and crackers","crackers and cheese"],c:380,p:14,cb:28,f:24,s:"2oz cheese + ~15 crackers"},
+  {k:["granola bar"],c:190,p:4,cb:28,f:8,s:"1 granola bar"},
+  {k:["rice cakes with peanut butter","rice cakes"],c:280,p:10,cb:34,f:14,s:"2 rice cakes with PB"},
+  {k:["hummus and veggies","hummus"],c:220,p:8,cb:24,f:12,s:"1/3 cup hummus with veggies"},
+  {k:["popcorn"],c:280,p:4,cb:32,f:16,s:"Large bowl of buttered popcorn"},
+  {k:["chips","potato chips"],c:320,p:4,cb:30,f:20,s:"~2oz bag of chips"},
+  {k:["pretzels"],c:220,p:5,cb:45,f:2,s:"~2oz bag of pretzels"},
+  {k:["mixed nuts","nuts"],c:280,p:8,cb:10,f:24,s:"~1/4 cup mixed nuts"},
+  {k:["string cheese"],c:80,p:8,cb:1,f:5,s:"1 stick of string cheese"},
+  {k:["cottage cheese"],c:220,p:28,cb:8,f:8,s:"1 cup cottage cheese"},
+  {k:["hard boiled eggs","hard boiled egg"],c:220,p:18,cb:2,f:15,s:"3 hard boiled eggs"},
+  {k:["avocado"],c:240,p:3,cb:12,f:22,s:"1 whole avocado"},
+  {k:["fruit","mixed fruit"],c:120,p:1,cb:30,f:0,s:"1 cup of mixed fruit"},
+  {k:["berries","mixed berries"],c:80,p:1,cb:18,f:0,s:"1 cup berries"},
+
+  // ── Desserts ──
+  {k:["a few cookies","cookies","couple cookies"],c:420,p:4,cb:58,f:20,s:"3 medium cookies"},
+  {k:["bowl of ice cream","ice cream"],c:450,p:8,cb:52,f:24,s:"2 scoops (~1 cup)"},
+  {k:["slice of cheesecake","cheesecake"],c:520,p:8,cb:42,f:36,s:"1 standard slice"},
+  {k:["brownie"],c:380,p:4,cb:48,f:20,s:"1 large brownie"},
+  {k:["slice of cake","cake"],c:450,p:5,cb:58,f:22,s:"1 slice of layer cake"},
+  {k:["donut","doughnut"],c:320,p:4,cb:38,f:18,s:"1 glazed donut"},
+  {k:["two donuts","2 donuts"],c:640,p:8,cb:76,f:36,s:"2 glazed donuts"},
+  {k:["pie","slice of pie"],c:420,p:4,cb:52,f:22,s:"1 slice of pie"},
+  {k:["milkshake"],c:580,p:14,cb:72,f:26,s:"Large milkshake"},
+
+  // ── Drinks ──
+  {k:["couple beers","a couple beers","two beers","2 beers"],c:320,p:2,cb:26,f:0,s:"2 × 12oz beers"},
+  {k:["beer","a beer"],c:160,p:1,cb:13,f:0,s:"12oz beer"},
+  {k:["ipa","craft beer"],c:220,p:2,cb:18,f:0,s:"12oz IPA / craft beer"},
+  {k:["glass of wine","wine"],c:150,p:0,cb:4,f:0,s:"6oz glass of wine"},
+  {k:["margarita"],c:300,p:0,cb:36,f:0,s:"Margarita on the rocks"},
+  {k:["cocktail","mixed drink"],c:250,p:0,cb:22,f:0,s:"Standard cocktail"},
+  {k:["whiskey","bourbon","scotch"],c:100,p:0,cb:0,f:0,s:"1.5oz shot"},
+  {k:["white claw","seltzer","hard seltzer"],c:100,p:0,cb:2,f:0,s:"1 can hard seltzer"},
+  {k:["bang energy","bang"],c:0,p:0,cb:0,f:0,s:"1 can Bang (zero cal)"},
+  {k:["celsius"],c:10,p:0,cb:2,f:0,s:"1 can Celsius"},
+  {k:["red bull"],c:110,p:0,cb:28,f:0,s:"8.4oz Red Bull"},
+  {k:["monster","monster energy"],c:210,p:0,cb:54,f:0,s:"16oz Monster"},
+  {k:["gatorade"],c:140,p:0,cb:36,f:0,s:"20oz Gatorade"},
+  {k:["orange juice","oj"],c:170,p:2,cb:40,f:0,s:"12oz glass of OJ"},
+  {k:["whole milk","glass of milk","milk"],c:220,p:12,cb:18,f:12,s:"12oz whole milk"},
+  {k:["chocolate milk"],c:300,p:14,cb:42,f:10,s:"12oz chocolate milk"},
+  {k:["protein smoothie","smoothie"],c:380,p:35,cb:42,f:8,s:"Large smoothie with whey & fruit"},
+  {k:["water"],c:0,p:0,cb:0,f:0,s:"Water (zero calories, always a yes)"},
+  {k:["sweet tea"],c:180,p:0,cb:46,f:0,s:"16oz sweet tea"},
+  {k:["lemonade"],c:180,p:0,cb:44,f:0,s:"16oz lemonade"},
+  {k:["soda","coke","pepsi","sprite"],c:180,p:0,cb:46,f:0,s:"16oz soda"},
+  {k:["diet soda","diet coke","coke zero"],c:0,p:0,cb:0,f:0,s:"Diet soda (zero calories)"},
+
+  // ── Bowls & Misc ──
+  {k:["acai bowl","acai"],c:520,p:10,cb:82,f:16,s:"Medium acai bowl with granola & fruit"},
+  {k:["smoothie bowl"],c:480,p:14,cb:72,f:16,s:"Smoothie bowl with toppings"},
+  {k:["grain bowl","buddha bowl"],c:620,p:28,cb:72,f:24,s:"Grain bowl with protein & veggies"},
+  {k:["power bowl"],c:580,p:38,cb:55,f:18,s:"Protein power bowl with quinoa & veggies"},
+
+  // ── Vague / Catch-all ──
+  {k:["a big meal","big meal","large meal"],c:900,p:40,cb:80,f:40,s:"Estimated large meal for a big guy"},
+  {k:["something light","something small","a snack","light snack"],c:250,p:15,cb:24,f:10,s:"Light snack / small plate"},
+  {k:["leftovers"],c:650,p:35,cb:55,f:28,s:"Estimated plate of leftovers"},
+  {k:["meal prep","meal prep container"],c:520,p:42,cb:50,f:14,s:"Standard meal prep: protein + rice + veggies"},
+];
+
+function fuzzyMatch(raw) {
+  const q = raw.toLowerCase().trim().replace(/['']/g, "'");
+  for (const item of DB) {
+    for (const k of item.k) {
+      if (q === k || q.includes(k) || k.includes(q)) {
+        return { name: raw, calories: item.c, protein: item.p, carbs: item.cb, fat: item.f, serving: item.s };
+      }
+    }
+  }
+  const words = q.split(/\s+/).filter(w => w.length > 2);
+  let best = null, bestScore = 0;
+  for (const item of DB) {
+    for (const k of item.k) {
+      const kw = k.split(/\s+/);
+      let score = 0;
+      for (const w of words) { if (kw.some(x => x.includes(w) || w.includes(x))) score++; }
+      const pct = score / Math.max(words.length, 1);
+      if (pct > bestScore && pct >= 0.4) { bestScore = pct; best = item; }
+    }
+  }
+  if (best) return { name: raw, calories: best.c, protein: best.p, carbs: best.cb, fat: best.f, serving: best.s };
+  return null;
+}
+
+function getVerdict(macros, remaining, mealsLeft) {
+  if (macros.calories > remaining.calories + 100) {
+    return { verdict: "NO", reasoning: `That's ${macros.calories} cal but you only have ${Math.round(remaining.calories)} left. You'd blow past your target.`, suggestion: "Go lighter — grilled chicken, a protein shake, or a salad with lean protein." };
+  }
+  const calPct = macros.calories / (remaining.calories || 1);
+  if (mealsLeft > 1 && calPct > 0.7) {
+    return { verdict: "MODIFY", reasoning: `${macros.calories} cal is ${Math.round(calPct * 100)}% of what you have left with ${mealsLeft} meals to go. You'll be starving later.`, suggestion: `Cut portion by a third or go leaner. Aim for ~${Math.round(remaining.calories / mealsLeft)} cal per remaining meal.` };
+  }
+  const pRatio = macros.protein / (macros.calories || 1);
+  if (pRatio < 0.04 && remaining.protein > 50) {
+    return { verdict: "MODIFY", reasoning: `Only ${macros.protein}g protein for ${macros.calories} cal — bad ratio. You still need ${Math.round(remaining.protein)}g protein today.`, suggestion: "Add protein or swap. Grilled chicken, fish, or add a shake on the side." };
+  }
+  const pNote = macros.protein >= 30 ? "Solid protein." : "Protein is moderate — load up your other meals.";
+  return { verdict: "YES", reasoning: `${macros.calories} cal fits your ${Math.round(remaining.calories)} remaining. ${pNote}`, suggestion: "" };
+}
+
+// Helper: load from localStorage with daily reset
+function loadToday(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const { date, data } = JSON.parse(raw);
+    if (date !== new Date().toDateString()) return fallback; // new day = reset
+    return data;
+  } catch { return fallback; }
+}
+function saveToday(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ date: new Date().toDateString(), data })); } catch {}
+}
+function loadPersist(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+}
+
+function NutritionTracker() {
+  const [logged, setLogged] = useState(() => loadToday('lo_logged', []));
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [resp, setResp] = useState(null);
+  const [pending, setPending] = useState(null);
+  const [hour, setHour] = useState(new Date().getHours());
+  const [phase, setPhase] = useState(() => loadPersist('lo_phase', 'weeks1_6'));
+  const [suggestions, setSuggestions] = useState(null);
+  const [sugLoading, setSugLoading] = useState(false);
+  const [requestedFoods, setRequestedFoods] = useState(() => loadPersist('lo_requests', []));
+  const [requestInput, setRequestInput] = useState("");
+  const [showRequest, setShowRequest] = useState(false);
+  const ref = useRef(null);
+
+  // Persist food log (resets daily)
+  useEffect(() => { saveToday('lo_logged', logged); }, [logged]);
+  // Persist phase selection
+  useEffect(() => { try { localStorage.setItem('lo_phase', JSON.stringify(phase)); } catch {} }, [phase]);
+  // Persist food requests
+  useEffect(() => { try { localStorage.setItem('lo_requests', JSON.stringify(requestedFoods)); } catch {} }, [requestedFoods]);
+
+  useEffect(() => { const t = setInterval(() => setHour(new Date().getHours()), 60000); return () => clearInterval(t); }, []);
+
+  const totals = logged.reduce((a, f) => ({ calories: a.calories + f.calories, protein: a.protein + f.protein, carbs: a.carbs + f.carbs, fat: a.fat + f.fat }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+  const targets = { ...BASE_TARGETS, calories: PHASE_INFO[phase].calories };
+  const remaining = { calories: Math.max(0, targets.calories - totals.calories), protein: Math.max(0, targets.protein - totals.protein), carbs: Math.max(0, targets.carbs - totals.carbs), fat: Math.max(0, targets.fat - totals.fat) };
+  const mwi = hour < 9 ? 0 : hour < 13 ? 1 : hour < 16 ? 2 : hour < 20 ? 3 : 4;
+  const mealsLeft = MEAL_WINDOWS.length - mwi;
+
+  const analyze = async () => {
+    if (!input.trim()) return;
+    setLoading(true); setResp(null); setPending(null);
+
+    // Always try AI first for accurate food recognition
+    const mw = MEAL_WINDOWS[mwi];
+    const prompt = `You are a sports nutrition AI for a 6'1" 264lb former D1 defensive tackle cutting to ~235 over 12 weeks while preserving muscle. He's in ${PHASE_INFO[phase].label}.
+
+CURRENT MEAL WINDOW: ${mw.name} — ${mw.desc}
+MEALS REMAINING TODAY: ${mealsLeft}
+TODAY SO FAR: ${logged.length === 0 ? "Nothing logged" : logged.map(f => f.name + ": " + f.calories + "cal/" + f.protein + "gP/" + f.carbs + "gC/" + f.fat + "gF").join("; ")}
+REMAINING: ${remaining.calories} cal / ${remaining.protein}g P / ${remaining.carbs}g C / ${remaining.fat}g F
+
+FOOD: "${input.trim()}"
+
+Estimate macros for literally ANY food input — restaurant items, homemade, brand names, vague descriptions, desserts, snacks, drinks, anything. Use real published nutrition data for branded items. Estimate generously for a large 264lb athletic male. Never refuse. Never ask for clarification.
+
+Respond ONLY with valid JSON, no markdown, no backticks:
+{"verdict":"YES or NO or MODIFY","food_name":"cleaned up name","estimated_macros":{"calories":0,"protein":0,"carbs":0,"fat":0},"serving_size":"what you assumed","reasoning":"1-2 sentences, direct like a coach","suggestion":"concrete alternative if NO/MODIFY, else empty string"}`;
+
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 500, messages: [{ role: "user", content: prompt }] }) });
+      if (!r.ok) throw new Error("API " + r.status);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error.message);
+      const txt = d.content.filter(i => i.type === "text").map(i => i.text).join("").replace(/```json|```/g, "").trim();
+      const jsonMatch = txt.match(/\{[\s\S]*\}/);
+      const p = JSON.parse(jsonMatch ? jsonMatch[0] : txt);
+      setResp(p); setPending(p);
+    } catch {
+      // API failed — fall back to local DB
+      const match = fuzzyMatch(input.trim());
+      if (match) {
+        const macros = { calories: match.calories, protein: match.protein, carbs: match.carbs, fat: match.fat };
+        const v = getVerdict(macros, remaining, mealsLeft);
+        const r = { verdict: v.verdict, food_name: match.name.charAt(0).toUpperCase() + match.name.slice(1), estimated_macros: macros, serving_size: match.serving, reasoning: v.reasoning, suggestion: v.suggestion };
+        setResp(r); setPending(r);
+      } else {
+        // Nothing matched — rough estimate
+        const fallback = { calories: 500, protein: 20, carbs: 45, fat: 22 };
+        const v = getVerdict(fallback, remaining, mealsLeft);
+        setResp({ verdict: v.verdict, food_name: input.trim(), estimated_macros: fallback, serving_size: "Rough estimate — couldn't look this up. Adjust before logging.", reasoning: "Estimated ~500 cal. " + v.reasoning, suggestion: v.suggestion });
+        setPending({ verdict: v.verdict, food_name: input.trim(), estimated_macros: fallback, serving_size: "Rough estimate", reasoning: v.reasoning, suggestion: v.suggestion });
+      }
+    }
+    setLoading(false);
+  };
+
+  const confirm = () => { if (!pending) return; setLogged([...logged, { name: pending.food_name, ...pending.estimated_macros, time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }), meal: MEAL_WINDOWS[mwi].name }]); setResp(null); setPending(null); setInput(""); ref.current?.focus(); };
+  const dismiss = () => { setResp(null); setPending(null); setInput(""); ref.current?.focus(); };
+
+  // Smart meal suggestions based on remaining macros
+  const getSuggestions = async () => {
+    setSugLoading(true);
+    setSuggestions(null);
+    const mw = MEAL_WINDOWS[mwi];
+    const calPerMeal = Math.round(remaining.calories / Math.max(mealsLeft, 1));
+    const protPerMeal = Math.round(remaining.protein / Math.max(mealsLeft, 1));
+
+    // Build smart local suggestions from DB
+    const scored = DB.map(item => {
+      const calFit = 1 - Math.abs(item.c - calPerMeal) / calPerMeal;
+      const protRatio = item.p / (item.c || 1);
+      const protBonus = remaining.protein > 80 ? protRatio * 3 : protRatio;
+      return { ...item, score: calFit + protBonus };
+    }).filter(item => item.c <= remaining.calories + 50 && item.c >= 100).sort((a, b) => b.score - a.score);
+
+    // Pick diverse suggestions
+    const picks = [];
+    const usedCats = new Set();
+    for (const item of scored) {
+      const name = item.k[0];
+      const cat = name.includes("chicken") ? "chicken" : name.includes("steak") ? "beef" : name.includes("salmon") ? "fish" : name.includes("egg") ? "breakfast" : name.includes("protein") ? "supplement" : name.includes("salad") ? "salad" : name;
+      if (!usedCats.has(cat) || picks.length < 3) {
+        picks.push(item);
+        usedCats.add(cat);
+      }
+      if (picks.length >= 5) break;
+    }
+
+    // Also try API for more creative suggestions
+    const prompt = `Sports nutrition coach for a 264lb former D1 DT cutting to 235. It's ${mw.name} (${mw.desc}), ${mealsLeft} meals left today. Remaining: ${remaining.calories}cal / ${remaining.protein}gP / ${remaining.carbs}gC / ${remaining.fat}gF. Target ~${calPerMeal} cal and ~${protPerMeal}g protein per remaining meal. Suggest 3 specific, realistic meals — include both homemade and restaurant/fast food options. Be specific (not just "grilled chicken"). Respond ONLY JSON array: [{"name":"","calories":0,"protein":0,"carbs":0,"fat":0,"why":"1 sentence reason"}]`;
+
+    let aiPicks = [];
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 500, messages: [{ role: "user", content: prompt }] }) });
+      if (r.ok) {
+        const d = await r.json();
+        if (!d.error) {
+          const txt = d.content.filter(i => i.type === "text").map(i => i.text).join("").replace(/```json|```/g, "").trim();
+          const m = txt.match(/\[[\s\S]*\]/);
+          if (m) aiPicks = JSON.parse(m[0]);
+        }
+      }
+    } catch {}
+
+    // Combine: AI picks first if available, then local picks
+    const allSuggestions = [];
+    for (const ai of aiPicks) {
+      allSuggestions.push({ name: ai.name, calories: ai.calories, protein: ai.protein, carbs: ai.carbs, fat: ai.fat, why: ai.why, source: "ai" });
+    }
+    for (const local of picks.slice(0, aiPicks.length > 0 ? 2 : 5)) {
+      allSuggestions.push({ name: local.k[0].charAt(0).toUpperCase() + local.k[0].slice(1), calories: local.c, protein: local.p, carbs: local.cb, fat: local.f, why: local.s, source: "db" });
+    }
+
+    setSuggestions(allSuggestions.slice(0, 5));
+    setSugLoading(false);
+  };
+
+  const submitFoodRequest = () => {
+    if (!requestInput.trim()) return;
+    setRequestedFoods([...requestedFoods, { food: requestInput.trim(), time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) }]);
+    setRequestInput("");
+  };
+
+  const pct = (v, t) => Math.min(100, (v / t) * 100);
+  const vc = resp?.verdict === "YES" ? "#4ade80" : resp?.verdict === "NO" ? "#f87171" : "#fbbf24";
+
+  const S = { bg: "#0a0a0a", sf: "#141414", sf2: "#1c1c1c", bd: "#2a2a2a", tx: "#e8e8e8", dm: "#888", mt: "#555", ac: "#c4f542" };
+
+  return (
+    <div style={{ background: S.bg, minHeight: "100vh", color: S.tx, fontFamily: "'Source Sans 3','Segoe UI',sans-serif" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "20px 16px 80px" }}>
+
+        <div style={{ textAlign: "center", paddingBottom: 20, borderBottom: `1px solid ${S.bd}`, marginBottom: 20 }}>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: 4, textTransform: "uppercase", color: S.ac, marginBottom: 6 }}>Daily Fuel Check</div>
+          <h1 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, margin: 0 }}>Nutrition Tracker</h1>
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+            {Object.keys(PHASE_INFO).map(p => (
+              <button key={p} onClick={() => setPhase(p)} style={{ background: phase === p ? S.ac : S.sf2, color: phase === p ? S.bg : S.dm, border: `1px solid ${phase === p ? S.ac : S.bd}`, borderRadius: 6, padding: "6px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer", letterSpacing: 0.5 }}>{PHASE_INFO[p].label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Macros */}
+        <div style={{ background: S.sf, border: `1px solid ${S.bd}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, letterSpacing: 2, textTransform: "uppercase", color: S.ac }}>Calories</span>
+              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700 }}>{Math.round(totals.calories)} <span style={{ fontSize: 13, color: S.mt, fontWeight: 400 }}>/ {targets.calories}</span></span>
+            </div>
+            <div style={{ height: 10, background: S.sf2, borderRadius: 5, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${pct(totals.calories, targets.calories)}%`, background: pct(totals.calories, targets.calories) > 100 ? "#f87171" : S.ac, borderRadius: 5, transition: "width 0.5s" }} />
+            </div>
+            <div style={{ fontSize: 12, color: S.dm, marginTop: 4, textAlign: "right" }}>{remaining.calories > 0 ? `${Math.round(remaining.calories)} remaining` : "Target reached"}</div>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            {[{ l: "Protein", v: totals.protein, t: targets.protein, r: remaining.protein, co: "#4da6ff" }, { l: "Carbs", v: totals.carbs, t: targets.carbs, r: remaining.carbs, co: "#fbbf24" }, { l: "Fat", v: totals.fat, t: targets.fat, r: remaining.fat, co: "#b388ff" }].map(m => (
+              <div key={m.l} style={{ flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, color: S.mt }}>{m.l}</span>
+                  <span style={{ fontSize: 11, color: "#aaa", fontWeight: 500 }}>{Math.round(m.r)}g left</span>
+                </div>
+                <div style={{ height: 6, background: S.sf2, borderRadius: 3, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct(m.v, m.t)}%`, background: pct(m.v, m.t) > 100 ? "#f87171" : m.co, borderRadius: 3, transition: "width 0.5s" }} /></div>
+                <div style={{ fontSize: 11, color: S.dm, marginTop: 3, textAlign: "center" }}>{Math.round(m.v)}g / {m.t}g</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Meal Window */}
+        <div style={{ background: S.sf, border: `1px solid ${S.bd}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 22 }}>{MEAL_WINDOWS[mwi].icon}</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{MEAL_WINDOWS[mwi].name} — {MEAL_WINDOWS[mwi].desc}</div>
+            <div style={{ fontSize: 11, color: S.dm }}>{mealsLeft} meal windows left today</div>
+          </div>
+        </div>
+
+        {/* Input */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <input ref={ref} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && !loading && analyze()} placeholder="Chicken parm, Starbucks latte, Chipotle bowl..." style={{ flex: 1, background: S.sf2, border: `1px solid ${S.bd}`, borderRadius: 10, padding: "14px 16px", color: S.tx, fontSize: 15, outline: "none", fontFamily: "inherit" }} />
+          <button onClick={analyze} disabled={loading || !input.trim()} style={{ background: loading ? S.bd : S.ac, color: S.bg, border: "none", borderRadius: 10, padding: "14px 20px", fontWeight: 700, fontSize: 14, cursor: loading ? "wait" : "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: 1, textTransform: "uppercase", opacity: !input.trim() ? 0.4 : 1, whiteSpace: "nowrap" }}>{loading ? "..." : "Check"}</button>
+        </div>
+
+        {/* Quick Chips */}
+        {!resp && !loading && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+            {["Chicken parm sandwich", "Grande caramel macchiato", "Chipotle bowl", "Chick-fil-A meal", "Protein shake", "Cookout tray", "Couple slices of pizza", "Wings from Bdubs", "Eggs and bacon", "Greek yogurt", "A couple beers", "Acai bowl"].map(c => (
+              <button key={c} onClick={() => setInput(c)} style={{ background: S.sf2, border: `1px solid ${S.bd}`, borderRadius: 20, padding: "6px 12px", fontSize: 12, color: S.dm, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}>{c}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Result */}
+        {resp && resp.verdict !== "ERROR" && (
+          <div style={{ background: S.sf, border: `1px solid ${vc}44`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 700, color: vc, letterSpacing: 2 }}>{resp.verdict === "YES" ? "✅ YES" : resp.verdict === "NO" ? "🚫 NO" : "⚠️ MODIFY"}</div>
+              <div style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>{resp.food_name}</div>
+            </div>
+            <div style={{ display: "flex", gap: 16, marginBottom: 10, flexWrap: "wrap" }}>
+              {[{ l: "Cal", v: resp.estimated_macros.calories, co: S.ac }, { l: "P", v: resp.estimated_macros.protein + "g", co: "#4da6ff" }, { l: "C", v: resp.estimated_macros.carbs + "g", co: "#fbbf24" }, { l: "F", v: resp.estimated_macros.fat + "g", co: "#b388ff" }].map(m => (
+                <div key={m.l} style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: S.mt, textTransform: "uppercase", letterSpacing: 1 }}>{m.l}</div>
+                  <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, color: m.co, fontWeight: 600 }}>{m.v}</div>
+                </div>
+              ))}
+              <div style={{ textAlign: "center", flex: 1, minWidth: 100 }}>
+                <div style={{ fontSize: 10, color: S.mt, textTransform: "uppercase", letterSpacing: 1 }}>Serving</div>
+                <div style={{ fontSize: 12, color: "#aaa", lineHeight: 1.3, marginTop: 2 }}>{resp.serving_size}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 14, color: "#ccc", lineHeight: 1.5, marginBottom: resp.suggestion ? 8 : 12 }}>{resp.reasoning}</div>
+            {resp.suggestion && <div style={{ fontSize: 13, color: "#fbbf24", lineHeight: 1.5, marginBottom: 12, padding: "8px 10px", background: "#1a1805", borderRadius: 6, border: "1px solid #3a2e10" }}>💡 {resp.suggestion}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              {(resp.verdict === "YES" || resp.verdict === "MODIFY") && <button onClick={confirm} style={{ flex: 1, background: S.ac, color: S.bg, border: "none", borderRadius: 8, padding: 12, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: 1, textTransform: "uppercase" }}>Log It</button>}
+              <button onClick={dismiss} style={{ flex: resp.verdict === "NO" ? 1 : 0, minWidth: 80, background: S.sf2, color: S.dm, border: `1px solid ${S.bd}`, borderRadius: 8, padding: 12, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: 1, textTransform: "uppercase" }}>{resp.verdict === "NO" ? "Try Something Else" : "Skip"}</button>
+            </div>
+          </div>
+        )}
+
+        {resp?.verdict === "ERROR" && <div style={{ background: S.sf2, border: "1px solid #333", borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13, color: "#f87171" }}>{resp.reasoning}</div>}
+
+        {/* Log */}
+        {logged.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: S.mt }}>Today's Log</div>
+              <button onClick={() => { setLogged([]); setResp(null); setPending(null); setInput(""); }} style={{ background: "none", border: "none", color: "#f87171", fontSize: 11, cursor: "pointer", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>Clear All</button>
+            </div>
+            {logged.map((f, i) => (
+              <div key={i} style={{ background: S.sf, border: `1px solid ${S.bd}`, borderRadius: 8, padding: "10px 14px", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: S.dm, marginTop: 2 }}>{f.meal} · {f.time} · {f.calories} cal · {f.protein}g P · {f.carbs}g C · {f.fat}g F</div>
+                </div>
+                <button onClick={() => setLogged(logged.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: S.mt, fontSize: 18, cursor: "pointer", padding: "0 4px" }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Template */}
+
+        {/* What Should I Eat? */}
+        <div style={{ background: S.sf, border: `1px solid ${S.bd}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: suggestions ? 12 : 0 }}>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: "#4da6ff" }}>What Should I Eat?</div>
+            <button onClick={getSuggestions} disabled={sugLoading} style={{ background: "#4da6ff", color: S.bg, border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, fontSize: 12, cursor: sugLoading ? "wait" : "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: 1, textTransform: "uppercase", opacity: sugLoading ? 0.5 : 1 }}>{sugLoading ? "Thinking..." : suggestions ? "Refresh" : "Suggest Meals"}</button>
+          </div>
+          {!suggestions && !sugLoading && (
+            <div style={{ fontSize: 12, color: S.mt, marginTop: 8 }}>Tap to get meal ideas that fit your remaining {Math.round(remaining.calories)} cal / {Math.round(remaining.protein)}g protein.</div>
+          )}
+          {suggestions && (
+            <div>
+              <div style={{ fontSize: 11, color: S.dm, marginBottom: 10 }}>Based on {Math.round(remaining.calories)} cal & {Math.round(remaining.protein)}g protein remaining across {mealsLeft} meals:</div>
+              {suggestions.map((s, i) => (
+                <div key={i} style={{ background: S.sf2, border: `1px solid ${S.bd}`, borderRadius: 8, padding: "10px 14px", marginBottom: 6, cursor: "pointer", transition: "border-color 0.2s" }}
+                  onClick={() => { setInput(s.name); setSuggestions(null); ref.current?.focus(); }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
+                    <div style={{ fontSize: 12, color: S.ac, fontFamily: "'Oswald',sans-serif", whiteSpace: "nowrap" }}>{s.calories} cal</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: "#4da6ff" }}>{s.protein}g P</span>
+                    <span style={{ fontSize: 11, color: "#fbbf24" }}>{s.carbs}g C</span>
+                    <span style={{ fontSize: 11, color: "#b388ff" }}>{s.fat}g F</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: S.mt, marginTop: 4, fontStyle: "italic" }}>{s.why}</div>
+                </div>
+              ))}
+              <div style={{ fontSize: 10, color: S.mt, marginTop: 6, textAlign: "center" }}>Tap any suggestion to check it</div>
+            </div>
+          )}
+        </div>
+
+        {/* Request Missing Food */}
+        <div style={{ background: S.sf, border: `1px solid ${S.bd}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }} onClick={() => setShowRequest(!showRequest)}>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: "#ff9f43" }}>Request a Food</div>
+            <span style={{ color: S.dm, fontSize: 14 }}>{showRequest ? "▲" : "▼"}</span>
+          </div>
+          {showRequest && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: S.mt, marginBottom: 8 }}>Can't find something? Submit it here and it'll be added to the database.</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input value={requestInput} onChange={e => setRequestInput(e.target.value)} onKeyDown={e => e.key === "Enter" && submitFoodRequest()} placeholder="e.g. Cookout milkshake, Bojangles supreme combo..." style={{ flex: 1, background: S.sf2, border: `1px solid ${S.bd}`, borderRadius: 8, padding: "10px 12px", color: S.tx, fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+                <button onClick={submitFoodRequest} disabled={!requestInput.trim()} style={{ background: "#ff9f43", color: S.bg, border: "none", borderRadius: 8, padding: "10px 14px", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Oswald',sans-serif", letterSpacing: 1, textTransform: "uppercase", opacity: !requestInput.trim() ? 0.4 : 1 }}>Send</button>
+              </div>
+              {requestedFoods.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 10, color: S.mt, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Submitted</div>
+                  {requestedFoods.map((r, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderTop: i > 0 ? `1px solid ${S.bd}` : "none" }}>
+                      <span style={{ fontSize: 13, color: S.dm }}>✓ {r.food}</span>
+                      <span style={{ fontSize: 10, color: S.mt }}>{r.time}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Daily Template */}
+        <div style={{ background: S.sf, border: `1px solid ${S.bd}`, borderRadius: 12, padding: 16 }}>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 12, letterSpacing: 3, textTransform: "uppercase", color: S.ac, marginBottom: 12 }}>Daily Template — {targets.calories} Cal</div>
+          {MEAL_WINDOWS.map((m, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i > 0 ? `1px solid ${S.sf2}` : "none", opacity: mwi > i ? 0.4 : 1 }}>
+              <span style={{ fontSize: 18, width: 28, textAlign: "center" }}>{m.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: mwi === i ? 700 : 400, color: mwi === i ? S.ac : S.tx }}>{m.name} {mwi === i && "← NOW"}</div>
+                <div style={{ fontSize: 11, color: S.mt }}>{m.time} — {m.desc}</div>
+              </div>
+              <div style={{ fontSize: 12, color: S.mt }}>~{Math.round(targets.calories / 5)} cal</div>
+            </div>
+          ))}
+          <div style={{ marginTop: 12, fontSize: 12, color: S.mt, lineHeight: 1.6 }}>
+            <strong style={{ color: S.dm }}>Macro split:</strong> ~215g protein · ~190g carbs · ~75g fat<br />
+            <strong style={{ color: S.dm }}>Priority:</strong> Front-load protein. Carbs around training. Fats spread evenly.
+          </div>
+        </div>
+      </div>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap'); input::placeholder{color:#555;}`}</style>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(NutritionTracker));
+</script>
+</body>
+</html>
