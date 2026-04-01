@@ -434,7 +434,6 @@ Respond ONLY with valid JSON, no markdown, no backticks:
         setResp(r); setPending(r);
       } else {
         setResp({ verdict: "ERROR", reasoning: "No internet connection and this food isn't in the offline database. Connect to wifi and try again." });
-      }        setPending({ verdict: v.verdict, food_name: input.trim(), estimated_macros: fallback, serving_size: "Rough estimate", reasoning: v.reasoning, suggestion: v.suggestion });
       }
     }
     setLoading(false);
